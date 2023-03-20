@@ -36,7 +36,7 @@ namespace dp {
       public:
         explicit thread_pool(
             const unsigned int &number_of_threads = std::thread::hardware_concurrency())
-            : tasks_(number_of_threads), waiting_barrier_(number_of_threads) {
+            : tasks_(number_of_threads), waiting_barrier_(number_of_threads + 1) {
             std::size_t current_id = 0;
             for (std::size_t i = 0; i < number_of_threads; ++i) {
                 try {
@@ -72,8 +72,6 @@ namespace dp {
                             // once tasks are done, arrive at the barrier.
                             if (waiting_.load(std::memory_order_acquire)) {
                                 waiting_barrier_.arrive_and_wait();
-                                // notify the waiter
-                                wait_signal_.release();
                             }
                         } while (!stop_tok.stop_requested());
                     });
@@ -188,7 +186,7 @@ namespace dp {
             if (pending_tasks_.load(std::memory_order_acquire) == 0) return;
             waiting_.store(true);
             // wait for all threads to arrive at the barrier
-            wait_signal_.acquire();
+            waiting_barrier_.arrive_and_wait();
             // reset the waiting flag
             waiting_.store(false);
         }
@@ -215,7 +213,6 @@ namespace dp {
         std::atomic_int_fast64_t pending_tasks_{};
         std::atomic_bool waiting_{};
         std::barrier<> waiting_barrier_;
-        std::binary_semaphore wait_signal_{0};
     };
 
     /**
